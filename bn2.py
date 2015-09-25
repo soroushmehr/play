@@ -128,17 +128,17 @@ if normalization == 'bn2':
         parameters.extend([m,s])
 
 algorithm = GradientDescent(
-    cost=cost, params=parameters, step_rule=Scale(0.01))
+    cost=cost, parameters=parameters, step_rule=Adam(0.01))
 
 #update the M and S with batch statistics
-alpha = 0.9
+alpha = 0.1
 updates = []
 if normalization == 'bn2':
     for m,s,var in statistics_list:
         updates.append((m, cast(alpha*m + (1-alpha)*var.mean(axis=0), floatX)))
         updates.append((s, cast(alpha*s + (1-alpha)*var.std(axis=0) , floatX)))
 
-#algorithm.add_updates(updates)
+algorithm.add_updates(updates)
 # Since this line wont work with the extension to include parameters
 # in the gradient descent. Here's an extension that will do the job.
 

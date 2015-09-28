@@ -10,17 +10,14 @@ from scipy.io import wavfile
 from blocks.algorithms import (GradientDescent, Scale,
                                RMSProp, Adam,
                                StepClipping, CompositeRule)
-from blocks.bricks import (Tanh, Initializable, MLP,
-                        Rectifier, Activation, Identity,
-                        Random)
-from blocks.bricks.base import application
-from blocks.bricks.sequence_generators import (AbstractEmitter, 
-                        Readout, SequenceGenerator,
-                        AbstractFeedback)
+from blocks.bricks import (Tanh, MLP,
+                        Rectifier, Activation, Identity)
+
+from blocks.bricks.sequence_generators import ( 
+                        Readout, SequenceGenerator)
 from blocks.bricks.recurrent import LSTM, SimpleRecurrent
-from blocks.extensions import FinishAfter, Printing, SimpleExtension
-from blocks.extensions.monitoring import (TrainingDataMonitoring,
-                                    DataStreamMonitoring)
+from blocks.extensions import FinishAfter, Printing
+from blocks.extensions.monitoring import (TrainingDataMonitoring)
 from blocks.extensions.predicates import OnLogRecord
 from blocks.extensions.saveload import Checkpoint
 from blocks.extensions.training import TrackTheBest
@@ -29,7 +26,6 @@ from blocks.initialization import Constant, IsotropicGaussian
 from blocks.main_loop import MainLoop
 from blocks.model import Model
 
-from cle.cle.cost import Gaussian
 from cle.cle.utils import segment_axis
 
 from fuel.datasets.fruit import Fruit
@@ -40,7 +36,9 @@ from fuel.streams import DataStream
 
 from theano import tensor, config, function
 
-from extensions.sample import Speak
+from play.bricks.custom import (DeepTransitionFeedback, GaussianEmitter,
+                     GaussianMLP)
+from play.extensions.sample import Speak
 
 ###################
 # Define parameters of the model
@@ -66,113 +64,6 @@ save_dir = "/data/lisatmp3/sotelo/results/nips15/fruit/"
 experiment_name = "fruit_m0_1"
 
 #################
-# Utils
-#################
-
-class SoftPlus(Activation):
-    @application(inputs=['input_'], outputs=['output'])
-    def apply(self, input_):
-        return tensor.nnet.softplus(input_)
-
-class DeepTransitionFeedback(AbstractFeedback, Initializable):
-    def __init__(self, mlp, **kwargs):
-        super(DeepTransitionFeedback, self).__init__(**kwargs)
-
-        self.mlp = mlp
-        self.feedback_dim = mlp.output_dim
-        self.children = [self.mlp]
-
-    @application
-    def feedback(self, outputs):
-        return self.mlp.apply(outputs)
-
-    def get_dim(self, name):
-        if name == 'feedback':
-            return self.feedback_dim
-        return super(DeepTransitionFeedback, self).get_dim(name)
-
-class GaussianMLP(Initializable):
-    """An mlp brick that branchs out to output
-    sigmoid and mu for Gaussian dist
-    Parameters
-    ----------
-    mlp: MLP brick
-        the main mlp to wrap around.
-    dim:
-        output dim
-    """
-
-    def __init__(self, mlp, dim, const=0., **kwargs):
-        super(GaussianMLP, self).__init__(**kwargs)
-
-        self.dim = dim
-        self.const = const
-        input_dim = mlp.output_dim
-        self.mu = MLP(activations=[Identity()],
-                      dims=[input_dim, dim],
-                      weights_init=self.weights_init,
-                      biases_init=self.biases_init,
-                      name=self.name + "_mu")
-        self.sigma = MLP(activations=[SoftPlus()],
-                         dims=[input_dim, dim],
-                         weights_init=self.weights_init,
-                         biases_init=self.biases_init,
-                         name=self.name + "_sigma")
-
-        self.mlp = mlp
-        self.children = [self.mlp, self.mu, self.sigma]
-        self.children.extend(self.mlp.children)
-
-    @application
-    def apply(self, inputs):
-        state = self.mlp.apply(inputs)
-        mu = self.mu.apply(state)
-        sigma = self.sigma.apply(state) + self.const
-
-        return mu, sigma
-
-    @property
-    def output_dim(self):
-        return self.dim
-
-class GaussianEmitter(AbstractEmitter, Initializable, Random):
-    """A Gaussian emitter for the case of real outputs.
-    Parameters
-    ----------
-    initial_output :
-        The initial output.
-    """
-    def __init__(self, gaussianmlp, **kwargs):
-        super(GaussianEmitter, self).__init__(**kwargs)
-        self.gaussianmlp = gaussianmlp
-        self.children = [self.gaussianmlp]
-
-    def components(self, readouts):
-        # Returns Mu and Sigma
-        return self.gaussianmlp.apply(readouts)
-
-    @application
-    def emit(self, readouts):
-        mu, sigma = self.components(readouts)
-        nr = self.theano_rng.normal(size=mu.shape,
-                    avg=mu, std=sigma, dtype=floatX)
-        return nr
-
-    @application
-    def cost(self, readouts, outputs):
-        mu, sigma = self.components(readouts)
-        return Gaussian(outputs, mu, sigma)
-
-    @application
-    def initial_outputs(self, batch_size):
-        return tensor.zeros((batch_size, frame_size), dtype=floatX)
-
-    def get_dim(self, name):
-        if name == 'outputs':
-            return self.gaussianmlp.output_dim
-        return super(GaussianEmitter, self).get_dim(name)
-
-#################
 # Prepare dataset
 #################
 
@@ -183,8 +74,7 @@ def _segment_axis(data):
 	x = numpy.array([segment_axis(x, frame_size, 0) for x in data[0]])
 	return (x,)
 
-#dataset = Fruit(which_sets = ('train','test'))
-dataset = Fruit(which_sets = ('apple',))
+dataset = Fruit(which_sets = ('train','test'))
 
 data_stream = DataStream.default_stream(
         	dataset, iteration_scheme=ShuffledScheme(
@@ -241,6 +131,7 @@ mlp_gaussian = GaussianMLP(mlp = mlp_theta,
                             const = 0.00001)
 
 emitter = GaussianEmitter(gaussianmlp = mlp_gaussian,
+                          output_size = frame_size,
                           name = "emitter")
 
 source_names=['states']
@@ -257,8 +148,10 @@ generator = SequenceGenerator(readout=readout,
 
 generator.weights_init = IsotropicGaussian(0.01)
 generator.biases_init = Constant(0.)
-
 generator.initialize()
+
+#ipdb.set_trace()
+
 cost_matrix = generator.cost_matrix(x, x_mask)
 cost = cost_matrix.sum()/x_mask.sum()
 cost.name = "sequence_log_likelihood"
@@ -295,7 +188,9 @@ extensions = extensions=[
     TrackTheBest('train_sequence_log_likelihood'),
     Speak(generator = generator, 
           every_n_epochs = 15,
-          n_samples = 1),
+          n_samples = 1,
+          mean_data = mean_data,
+          std_data = std_data),
     Checkpoint(save_dir+experiment_name+".pkl",
                use_cpickle = True,
                every_n_epochs = 15),

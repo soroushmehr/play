@@ -82,7 +82,6 @@ data_stream = DataStream.default_stream(
             dataset.num_examples, batch_size))
 
 x_tr = next(data_stream.get_epoch_iterator())
-#ipdb.set_trace()
 
 # Standardize data
 all_data = numpy.array([])
@@ -153,84 +152,20 @@ generator.weights_init = IsotropicGaussian(0.01)
 generator.biases_init = Constant(0.)
 generator.initialize()
 
-#ipdb.set_trace()
-
-x_tr, x_mask_tr = next(data_stream.get_epoch_iterator())
-#ipdb.set_trace()
-
-##################
-# Test model
-#################
-r1 = mlp_x.apply(x)
-r2 = generator.fork.apply(r1)
-r3 = transition.apply(r2)
-r4 = mlp_theta.apply(r3[0])
-r4b = mlp_gmm.apply(r3[0])
-r4c = emitter.components(r3[0])
-#r4d = emitter.emit2(r3[0])
-r4e = emitter.emit(r3[0][0])
-
-mu, sigma, coeff = emitter.components(r3[0])
-
-# ipdb.set_trace()
-# #x_tr.shape
-# #(69, 15, 100)
-# print function([x], r1)(x_tr).shape
-# #(69, 15, 3000)
-# print function([x], r2)(x_tr).shape
-# #(69, 15, 12000)
-# print function([x], r3)(x_tr)[0].shape
-# #(69, 15, 3000)
-# print function([x], r4)(x_tr).shape
-# #(69, 15, 650)
-# print function([x], r4b)(x_tr)[2].shape
-# #(69, 15, 20)
-# print function([x], r4c)(x_tr)[2].shape
-# #(69, 15, 20)
-
-#mu, sigma, coeff = emitter.components(r3[0][0])
-#print function([x], mu)(x_tr).shape
-
-
-#ipdb.set_trace()
-w = tensor.tensor3('w')
-r5 = emitter.cost(r3[0], w)
-
-#print function([x,w], r5)(x_tr, x_tr).shape
-#ipdb.set_trace()
-
 cost_matrix = generator.cost_matrix(x, x_mask)
 cost = cost_matrix.sum()/x_mask.sum()
 cost.name = "sequence_log_likelihood"
 
-#ipdb.set_trace()
-cg = ComputationGraph(generator.generate(n_steps=30, batch_size = 10, iterate = True)).get_theano_function()
-cg()
-
-##############
-# Test with first batch
-##############
-
-x_tr, x_mask_tr = next(data_stream.get_epoch_iterator())
-
-f1 = function([x, x_mask], cost_matrix)
-
-#ipdb.set_trace()
-#print f1(x_tr, x_mask_tr).shape
-
-#ipdb.set_trace()
-
-################
-# Optimization Algorithm
-################
-
 cg = ComputationGraph(cost)
 model = Model(cost)
 
+#################
+# Algorithm
+#################
+
 algorithm = GradientDescent(
     cost=cost, parameters=cg.parameters,
-    step_rule=CompositeRule([StepClipping(10.0), Adam(lr)]),
-    on_unused_sources='warn')
+    step_rule=CompositeRule([StepClipping(10.0), Adam(lr)]))
 
 train_monitor = TrainingDataMonitoring(
     variables=[cost],

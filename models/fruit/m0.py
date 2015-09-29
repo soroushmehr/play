@@ -191,13 +191,13 @@ extensions = extensions=[
           n_samples = 1,
           mean_data = mean_data,
           std_data = std_data),
-    Checkpoint(save_dir+experiment_name+".pkl",
-               use_cpickle = True,
-               every_n_epochs = 15),
-    Checkpoint(save_dir+"best_"+experiment_name+".pkl",
-               use_cpickle = True
-               ).add_condition(['after_epoch'],
-                    predicate=OnLogRecord('train_sequence_log_likelihood_best_so_far')),
+    #Checkpoint(save_dir+experiment_name+".pkl",
+    #           use_cpickle = True,
+    #           every_n_epochs = 15),
+    #Checkpoint(save_dir+"best_"+experiment_name+".pkl",
+    #           use_cpickle = True
+    #           ).add_condition(['after_epoch'],
+    #                predicate=OnLogRecord('train_sequence_log_likelihood_best_so_far')),
     Printing(after_epoch = True)
     ]
 

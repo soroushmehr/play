@@ -30,9 +30,12 @@ from cle.cle.utils import segment_axis
 
 from fuel.datasets.fruit import Fruit
 from fuel.transformers import (Mapping, Padding, 
-                        ForceFloatX, ScaleAndShift)
+                        ForceFloatX, ScaleAndShift,
+                        FilterSources)
 from fuel.schemes import ShuffledScheme
 from fuel.streams import DataStream
+
+from scikits.samplerate import resample
 
 from theano import tensor, config, function
 
@@ -50,11 +53,11 @@ k = 20
 target_size = frame_size * k
 
 depth_x = 4
-hidden_size_mlp_x = 650
+hidden_size_mlp_x = 65#0
 
 depth_theta = 4
-hidden_size_mlp_theta = 650
-hidden_size_recurrent = 3000
+hidden_size_mlp_theta = 65#0
+hidden_size_recurrent = 300#0
 
 lr = 0.0001
 
@@ -63,7 +66,7 @@ floatX = theano.config.floatX
 
 save_dir = "/data/lisatmp3/sotelo/results/nips15/fruit/"
 #save_dir = "/Tmp/sotelo/results/nips15/fruit"
-experiment_name = "fruit_m1_0"
+experiment_name = "fruit_l0_0"
 
 #################
 # Prepare dataset
@@ -73,8 +76,23 @@ def _transpose(data):
     return tuple(array.swapaxes(0,1) for array in data)
 
 def _segment_axis(data):
-    x = numpy.array([segment_axis(x, frame_size, 0) for x in data[0]])
-    return (x,)
+    x = tuple([numpy.array([segment_axis(x, frame_size, 0) for x in var]) for var in data])
+    return x
+
+def _downsample_and_upsample(data):
+    ds = numpy.array([resample(x, 0.5, 'sinc_best') for x in data[0]])
+    us = numpy.array([resample(x, 2, 'sinc_best') for x in ds])
+    return (us,)
+
+def _equalize_size(data):
+    min_size = [min([len(x) for x in sequences]) for sequences in zip(*data)]
+    x = tuple([numpy.array([x[:size] for x,size in zip(var,min_size)]) for var in data])
+    return x
+
+def _get_residual(data):
+    # The order is correct?
+    ds = numpy.array([x[0]-x[1] for x in zip(*data)])
+    return (ds,)
 
 dataset = Fruit(which_sets = ('train','test'))
 
@@ -94,8 +112,16 @@ std_data = all_data.std()
 
 data_stream = ScaleAndShift(data_stream, scale = 1/std_data, 
                                         shift = -mean_data/std_data)
+
+# downsample and upsample
+
+data_stream = Mapping(data_stream, _downsample_and_upsample, add_sources=('upsampled',))
+data_stream = Mapping(data_stream, _equalize_size)
+data_stream = Mapping(data_stream, _get_residual, add_sources = ('residual',))
+data_stream = FilterSources(data_stream, sources = ('upsampled', 'residual',))
 data_stream = Mapping(data_stream, _segment_axis)
 data_stream = Padding(data_stream)
+data_stream = FilterSources(data_stream, sources = ('upsampled', 'residual', 'upsampled_mask'))
 data_stream = Mapping(data_stream, _transpose)
 data_stream = ForceFloatX(data_stream)
 
@@ -103,23 +129,22 @@ data_stream = ForceFloatX(data_stream)
 # Model
 #################
 
+x = tensor.tensor3('upsampled')
+x_mask = tensor.matrix('upsampled_mask')
+y = tensor.tensor3('residual')
+
 activations_x = [Rectifier()]*depth_x
 
 dims_x = [frame_size] + [hidden_size_mlp_x]*(depth_x-1) + \
-         [hidden_size_recurrent]
+         [4*hidden_size_recurrent]
 
 activations_theta = [Rectifier()]*depth_theta
 
 dims_theta = [hidden_size_recurrent] + \
              [hidden_size_mlp_theta]*depth_theta
 
-x = tensor.tensor3('features')
-x_mask = tensor.matrix('features_mask')
-
 mlp_x = MLP(activations = activations_x,
             dims = dims_x)
-
-feedback = DeepTransitionFeedback(mlp = mlp_x)
 
 transition = LSTM(
             dim=hidden_size_recurrent)
@@ -132,33 +157,39 @@ mlp_gmm = GMMMLP(mlp = mlp_theta,
                   k = k,
                   const = 0.00001)
 
-emitter = GMMEmitter(gmmmlp = mlp_gmm,
-                     output_size = frame_size,
-                     k = k,
-                     name = "emitter")
+bricks = [mlp_x, transition, mlp_gmm]
 
-source_names=['states']
-readout = Readout(
-    readout_dim = hidden_size_recurrent,
-    source_names =source_names,
-    emitter=emitter,
-    feedback_brick = feedback,
-    name="readout")
+for brick in bricks:
+    brick.weights_init = IsotropicGaussian(0.01)
+    brick.biases_init = Constant(0.)
+    brick.initialize()
 
-generator = SequenceGenerator(readout=readout, 
-                              transition=transition,
-                              name = "generator")
+##############
+# Test model
+##############
 
-generator.weights_init = IsotropicGaussian(0.01)
-generator.biases_init = Constant(0.)
-generator.initialize()
+x_g = mlp_x.apply(x)
+h = transition.apply(x_g)
+mu, sigma, coeff = mlp_gmm.apply(h[-2])
 
-cost_matrix = generator.cost_matrix(x, x_mask)
-cost = cost_matrix.sum()/x_mask.sum()
-cost.name = "sequence_log_likelihood"
+#from theano import function
+#x_tr, x_mask_tr, y_tr = next(data_stream.get_epoch_iterator())
+#print function([x], x_g)(x_tr).shape
+#print function([x], h)(x_tr)[-2].shape
+#print function([x], mu)(x_tr).shape
+
+from play.utils import GMM
+cost = GMM(y, mu, sigma, coeff)
+cost = cost*x_mask
+cost = cost.sum()/x_mask.sum()
+cost.name = 'sequence_log_likelihood'
 
 cg = ComputationGraph(cost)
 model = Model(cost)
+
+#ipdb.set_trace()
+#x_tr, x_mask_tr, y_tr = next(data_stream.get_epoch_iterator())
+#print function([x, x_mask, y], cost)(x_tr, x_mask_tr, y_tr)
 
 #################
 # Algorithm
@@ -176,11 +207,6 @@ train_monitor = TrainingDataMonitoring(
 extensions = extensions=[
     train_monitor,
     TrackTheBest('train_sequence_log_likelihood'),
-    Speak(generator = generator, 
-          every_n_epochs = 15,
-          n_samples = 1,
-          mean_data = mean_data,
-          std_data = std_data),
     Checkpoint(save_dir+experiment_name+".pkl",
                use_cpickle = True,
                every_n_epochs = 15),

@@ -196,16 +196,18 @@ class GMMEmitter(AbstractEmitter, Initializable, Random):
     def emit(self, readouts):
         mu, sigma, coeff = self.gmmmlp.apply(readouts)
         
-        batch_size = mu.shape[0]
-        frame_size = mu.shape[1]/coeff.shape[-1]
+        frame_size = mu.shape[-1]/coeff.shape[-1]
         k = coeff.shape[-1]
+        shape_result = coeff.shape
+        shape_result = tensor.set_subtensor(shape_result[-1],frame_size)
+        ndim_result = coeff.ndim
 
         mu = mu.reshape((-1, frame_size, k))
         sigma = sigma.reshape((-1, frame_size,k))
         coeff = coeff.reshape((-1, k))
 
         sample_coeff = self.theano_rng.multinomial(pvals = coeff, dtype=coeff.dtype)
-        idx = predict(sample_coeff, axis = 1)
+        idx = predict(sample_coeff, axis = -1)
 
         mu = mu[tensor.arange(mu.shape[0]), :, idx]
         sigma = sigma[tensor.arange(sigma.shape[0]), :, idx]
@@ -217,7 +219,7 @@ class GMMEmitter(AbstractEmitter, Initializable, Random):
 
         result = mu + sigma*epsilon
 
-        return result.reshape((batch_size, frame_size))
+        return result.reshape(shape_result, ndim = ndim_result)
 
     @application
     def cost(self, readouts, outputs):

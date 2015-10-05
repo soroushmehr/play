@@ -48,6 +48,8 @@ def _get_residual(data):
     return (ds,)
 
 data_stats = numpy.load('/data/lisatmp3/sotelo/data/blizzard/blizzard_standardize.npz')
+#data_stats = numpy.load('/scratch/jvb-000-aa/sotelo/data/blizzard/blizzard_standardize.npz')
+
 data_mean = data_stats['data_mean']
 data_std = data_stats['data_std']
 
@@ -75,6 +77,6 @@ def open_stream(which_sets= ('train',), port=5557):
     start_server(data_stream, port=port)
 
 if __name__ == "__main__":
-    port = 5557
+    port = int(sys.argv[1])
     Process(target=open_stream, args=(('train',), port)).start()
     Process(target=open_stream, args=(('valid',), port + 50)).start()

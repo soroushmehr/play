@@ -30,6 +30,12 @@ def _segment_axis(data):
     x = tuple([numpy.array([segment_axis(x, frame_size, 0) for x in var]) for var in data])
     return x
 
+def _downsample(data):
+    # HARDCODED
+    data_aug = numpy.hstack([data[0], numpy.zeros((batch_size,2))])
+    ds = numpy.array([resample(x, 0.5, 'sinc_best') for x in data_aug])
+    return (ds,)
+
 def _downsample_and_upsample(data):
     # HARDCODED
     data_aug = numpy.hstack([data[0], numpy.zeros((batch_size,4))])
@@ -63,6 +69,7 @@ def open_stream(which_sets= ('train',), port=5557):
 
     data_stream = ScaleAndShift(data_stream, scale = 1/data_std, 
                                             shift = -data_mean/data_std)
+    data_stream = Mapping(data_stream, _downsample)
     data_stream = Mapping(data_stream, _downsample_and_upsample, 
                           add_sources=('upsampled',))
     data_stream = Mapping(data_stream, _equalize_size)

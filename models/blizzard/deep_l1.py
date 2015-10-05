@@ -62,10 +62,10 @@ floatX = theano.config.floatX
 #job_id = 5557
 job_id = int(sys.argv[1])
 
-#save_dir = "/data/lisatmp3/sotelo/results/blizzard/"
-save_dir = '/scratch/jvb-000-aa/sotelo/results/'
+save_dir = "/data/lisatmp3/sotelo/results/blizzard/"
+#save_dir = '/scratch/jvb-000-aa/sotelo/results/'
 
-experiment_name = 'deep_l0_{}_{}'.format(job_id, lr)
+experiment_name = 'deep_l1_{}_{}'.format(job_id, lr)
 
 train_stream = ServerDataStream(('upsampled', 'residual',), 
                   produces_examples = False,

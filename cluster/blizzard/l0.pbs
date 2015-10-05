@@ -1,0 +1,40 @@
+#!/bin/bash
+#PBS -A jvb-000-ag
+#PBS -l walltime=23:00:00
+#PBS -l nodes=1:gpus=1
+#PBS -M rdz.sotelo@gmail.com
+#PBS -m bea
+#PBS -l feature=k80
+
+cd $SCRATCH/code
+
+PORT1=$MOAB_JOBID
+
+mkdir $LSCRATCH/$PORT1
+mkdir $LSCRATCH/$PORT1/data
+mkdir $LSCRATCH/$PORT1/data/blizzard
+
+cp $SCRATCH/data/blizzard/* $LSCRATCH/$PORT1/data/blizzard
+
+
+export THEANO_FLAGS=floatX=float32
+
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/scratch/jvb-000-aa/sotelo/local/cbin/lib
+
+#export LD_LIBRARY_PATH=$HOME/cudnn-6.5-linux-x64-v2:$LD_LIBRARY_PATH
+#export LIBRARY_PATH=$HOME/cudnn-6.5-linux-x64-v2:$LIBRARY_PATH
+#export CPATH=$HOME/cudnn-6.5-linux-x64-v2:$CPATH
+
+export FUEL_DATA_PATH=$LSCRATCH/$PORT1/data
+
+python play/datasets/server/blizzard/l0.py $PORT1 &
+SERVER1_PID=$!
+
+cp play/models/blizzard/l0.py ../results/blizzard/$PORT1.txt
+
+THEANO_FLAGS=device=gpu,compiledir=$LSCRATCH/$PORT1,$THEANO_FLAGS python play/models/blizzard/l0.py $PORT1 2> ../results/blizzard/$PORT1.err 1> ../results/blizzard/$PORT1.out &
+TRAINER1_PID=$!
+
+wait $TRAINER1_PID
+
+kill -9 $SERVER1_PID

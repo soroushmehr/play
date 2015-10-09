@@ -50,7 +50,7 @@ transition = SimpleRecurrent2(dim = dimension,
 
 readout = Readout(
     readout_dim=dimension,
-    source_names=transition.apply.states,
+    source_names=transition.apply.states + ["feedback"],
     name="readout")
 
 generator = SequenceGenerator(
@@ -96,7 +96,7 @@ class SimpleSequenceAttention(AbstractAttention):
 
     @application(outputs=['glimpses', 'step'])
     def take_glimpses(self, attended, preprocessed_attended=None,
-                attended_mask=None, **states):
+                attended_mask=None, step = None, **states):
         return attended[step, tensor.arange(attended.shape[1]), :], step + 1
 
     @take_glimpses.property('inputs')
@@ -114,7 +114,7 @@ class SimpleSequenceAttention(AbstractAttention):
         if name == 'step':
             return 0
         if name == 'glimpses':
-            return 3
+            return self.attended_dim
         return super(SimpleSequenceAttention, self).get_dim(name)
 
 # seq_length * batch_size * features
@@ -145,11 +145,8 @@ inputs = tensor.tensor3('inputs')
 #ar.apply(attended = attended_tv, n_steps = n_steps, batch_size = 2)
 states, glimpses, step = ar.initial_states(1, attended = attended)
 glimpses, step =ar.take_glimpses(attended = attended, states = states, glimpses = glimpses, step = step)
-
 states =ar.compute_states(inputs = inputs, attended = attended, states = states, glimpses = glimpses, step = step)
-
 distributed = ar.distribute.apply(inputs = inputs, glimpses = glimpses)
-
 states = ar.compute_states(states = states, inputs = inputs[0], glimpses = glimpses, step = step, attended = attended)
 
 batch_size = 2
@@ -157,8 +154,41 @@ features = 3
 #input_tr = numpy.zeros((seq_length, batch_size, features)).astype('float32')
 input_tr = generated_sequence_t[1:]
 
+try2 = ar.apply(attended = attended, inputs = inputs,
+    states = states, glimpses = glimpses, step = step, iterate = False)
 
-try2 = ar.apply(attended = attended, inputs = inputs)
-function([attended, inputs], try2)(attended_tr, input_tr)
+try3 = ar.apply(attended = attended, inputs = inputs,
+    states = states, glimpses = glimpses, step = step)
 
+function([attended, inputs], try3)(attended_tr, input_tr[:4,:,:])
+
+readout = Readout(
+    readout_dim=dimension,
+    source_names=transition.apply.states + ["feedback"] + ["glimpses"],
+    name="readout")
+
+generator2 = SequenceGenerator(
+    readout=readout,
+    transition=transition,
+    attention = ssa,
+    fork = Fork(['inputs'], prototype=Identity()),
+    weights_init = initialization.Identity(1.),
+    biases_init = initialization.Constant(0.),
+    name="generator")
+
+generator2.push_initialization_config()
+#generator.fork.weights_init = initialization.Identity(1.)
+generator2.transition.transition.weights_init = initialization.Identity(2.)
+generator2.initialize()
+
+results = generator2.generate(
+            attended = attended,
+            n_steps=n_steps,
+            batch_size=2, iterate=True,
+            return_initial_states = True,)
+
+results_cg = ComputationGraph(results)
+results_tf = results_cg.get_theano_function()
+results_tf(attended_tr)[0]
+results_tf(numpy.zeros(attended_tr.shape, dtype='float32'))[0]
 

@@ -53,8 +53,8 @@ def _get_residual(data):
     ds = numpy.array([x[0]-x[1] for x in zip(*data)])
     return (ds,)
 
-#data_stats = numpy.load('/data/lisatmp3/sotelo/data/blizzard/blizzard_standardize.npz')
-data_stats = numpy.load('/scratch/jvb-000-aa/sotelo/data/blizzard/blizzard_standardize.npz')
+data_stats = numpy.load('/data/lisatmp3/sotelo/data/blizzard/blizzard_standardize.npz')
+#data_stats = numpy.load('/scratch/jvb-000-aa/sotelo/data/blizzard/blizzard_standardize.npz')
 
 data_mean = data_stats['data_mean']
 data_std = data_stats['data_std']

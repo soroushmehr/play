@@ -3,7 +3,7 @@ import numpy
 import theano
 import ipdb
 
-INITIAL_OUTPUTS_CONSTANT = 0
+INITIAL_OUTPUTS_CONSTANT = 5
 
 dimension = 3
 transition_matrix = 2*numpy.eye(dimension)
@@ -57,8 +57,12 @@ transition = SimpleRecurrent2(dim = dimension,
 
 readout = Readout(
     readout_dim=dimension,
-    source_names=transition.apply.states,
-    emitter=TrivialEmitter2(readout_dim = 3),
+    source_names=['states', 'feedback'],
+    emitter=TrivialEmitter2(readout_dim = dimension),
+    feedback_brick=TrivialFeedback(output_dim = dimension),
+    #merge = Merge(),
+    post_merge = Identity(),
+    merged_dim = dimension,
     name="readout")
 
 generator = SequenceGenerator(

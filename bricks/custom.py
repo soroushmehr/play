@@ -31,7 +31,7 @@ class DeepTransitionFeedback(AbstractFeedback, Initializable):
         self.feedback_dim = mlp.output_dim
         self.children = [self.mlp]
 
-    @application
+    @application(outputs=['feedback'])
     def feedback(self, outputs):
         return self.mlp.apply(outputs)
 

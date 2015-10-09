@@ -2,8 +2,8 @@ import ipdb
 import numpy
 import theano
 import matplotlib
-import os
 import sys
+import os
 matplotlib.use('Agg')
 
 from matplotlib import pyplot
@@ -13,8 +13,9 @@ from blocks.algorithms import (GradientDescent, Adam,
                                StepClipping, CompositeRule)
 from blocks.bricks import (Tanh, MLP,
                         Rectifier, Activation, Identity)
-
 from blocks.bricks.recurrent import LSTM, RecurrentStack
+from blocks.bricks.sequence_generators import ( 
+                        Readout, SequenceGenerator)
 
 from blocks.extensions import FinishAfter, Printing, Timing
 from blocks.extensions.monitoring import (TrainingDataMonitoring,
@@ -31,7 +32,8 @@ from fuel.streams import ServerDataStream
 
 from theano import tensor, config, function
 
-from play.bricks.custom import GMMMLP, GMMEmitter
+from play.bricks.custom import GMMMLP, GMMEmitter, DeepTransitionFeedback
+from play.bricks.recurrent import SimpleSequenceAttention
 from play.datasets.blizzard import Blizzard
 from play.extensions import SaveComputationGraph
 from play.extensions.plot import Plot
@@ -49,11 +51,15 @@ target_size = frame_size * k
 depth_x = 4
 hidden_size_mlp_x = 32*20
 
-depth_lstm = 3
+depth_lstm = 4
 
 depth_theta = 4
 hidden_size_mlp_theta = 32*20
 hidden_size_recurrent = 32*20*3
+
+depth_context = 4
+hidden_size_mlp_context = 32*20
+context_size = 32*20*3
 
 lr = 10 ** (2*numpy.random.rand() - 5)
 
@@ -64,9 +70,9 @@ floatX = theano.config.floatX
 job_id = int(sys.argv[1])
 
 save_dir = os.environ['FUEL_DATA_PATH']
-save_dir = os.path.join(save_dir, '..','results/','blizzard/')
+save_dir = os.path.join(save_dir, '..','results/','blizzard/', str(job_id) + "/")
 
-experiment_name = 'deep_l0_{}_{}'.format(job_id, lr)
+experiment_name = 'deep_l3_{}_{}'.format(job_id, lr)
 
 train_stream = ServerDataStream(('upsampled', 'residual',), 
                   produces_examples = False,
@@ -79,8 +85,8 @@ valid_stream = ServerDataStream(('upsampled', 'residual',),
 # Model
 #################
 
-x = tensor.tensor3('upsampled')
-y = tensor.tensor3('residual')
+x = tensor.tensor3('residual')
+context = tensor.tensor3('upsampled')
 
 activations_x = [Rectifier()]*depth_x
 
@@ -92,9 +98,16 @@ activations_theta = [Rectifier()]*depth_theta
 dims_theta = [hidden_size_recurrent] + \
              [hidden_size_mlp_theta]*depth_theta
 
+activations_context = [Rectifier()]*depth_context
+
+dims_context = [frame_size] + [hidden_size_mlp_context]*(depth_context-1) + \
+         [context_size]
+
 mlp_x = MLP(activations = activations_x,
             dims = dims_x,
             name = "mlp_x")
+
+feedback = DeepTransitionFeedback(mlp = mlp_x)
 
 transition = [LSTM(dim=hidden_size_recurrent, 
                    name = "lstm_{}".format(i) ) for i in range(depth_lstm)]
@@ -112,9 +125,35 @@ mlp_gmm = GMMMLP(mlp = mlp_theta,
                   const = 0.00001,
                   name = "gmm_wrap")
 
-gmm_emitter = GMMEmitter(gmmmlp = mlp_gmm, output_size = frame_size, k = k)
+gmm_emitter = GMMEmitter(gmmmlp = mlp_gmm,
+  output_size = frame_size, k = k)
 
-bricks = [mlp_x, transition, gmm_emitter]
+source_names = [name for name in transition.apply.states if 'states' in name]
+
+attention = SimpleSequenceAttention(
+              state_names = source_names,
+              state_dims = [hidden_size_recurrent],
+              attended_dim = context_size,
+              name = "attention")
+
+#ipdb.set_trace()
+# Verify source names
+readout = Readout(
+    readout_dim = hidden_size_recurrent,
+    source_names =source_names + ['feedback'] + ['glimpses'],
+    emitter=gmm_emitter,
+    feedback_brick = feedback,
+    name="readout")
+
+generator = SequenceGenerator(readout=readout, 
+                              transition=transition,
+                              attention = attention,
+                              name = "generator")
+
+mlp_context = MLP(activations = activations_context,
+                  dims = dims_context)
+
+bricks = [generator, mlp_context]
 
 for brick in bricks:
     brick.weights_init = IsotropicGaussian(0.01)
@@ -125,16 +164,17 @@ for brick in bricks:
 # Test model
 ##############
 
-x_g = mlp_x.apply(x)
-h = transition.apply(x_g)
-mu, sigma, coeff = mlp_gmm.apply(h[-2])
+cost_matrix = generator.cost_matrix(x,
+        attended = mlp_context.apply(context))
+cost = cost_matrix.mean()
+cost.name = "nll"
 
-cost = gmm_emitter.cost(h[-2], y)
-cost = cost.mean()
-cost.name = 'nll'
-
-emit = gmm_emitter.emit(h[-2])
-emit.name = 'emitter'
+emit = generator.generate(
+  attended = mlp_context.apply(context),
+  n_steps = context.shape[0],
+  batch_size = context.shape[1],
+  iterate = True
+  )[-4]
 
 cg = ComputationGraph(cost)
 model = Model(cost)
@@ -143,7 +183,7 @@ model = Model(cost)
 # Algorithm
 #################
 
-n_batches = 139*16
+n_batches = 16#139*16
 
 algorithm = GradientDescent(
     cost=cost, parameters=cg.parameters,
@@ -158,6 +198,7 @@ valid_monitor = DataStreamMonitoring(
      [cost],
      valid_stream,
      after_epoch = True,
+     every_n_batches = 4*n_batches,
      #before_first_epoch = False,
      prefix="valid")
 
@@ -170,7 +211,7 @@ extensions = extensions=[
          [['train_nll',
            'valid_nll']],
          every_n_batches = 4*n_batches,
-         email=True),
+         email=False),
     Checkpoint(save_dir+experiment_name+".pkl",
                use_cpickle = True,
                every_n_batches = n_batches*8,

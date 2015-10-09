@@ -25,13 +25,13 @@ fi
 export FUEL_DATA_PATH=$LSCRATCH/data
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/scratch/jvb-000-aa/sotelo/local/cbin/lib
 
-cp play/models/blizzard/deep_l0.py ../results/blizzard/$PORT/model.py
-cp play/datasets/server/blizzard/l0.py ../results/blizzard/$PORT/dataset.py
+cp play/models/blizzard/deep_l3.py ../results/blizzard/$PORT/model.py
+cp play/datasets/server/blizzard/l3.py ../results/blizzard/$PORT/dataset.py
 
-python play/datasets/server/blizzard/l0.py $PORT &
+python play/datasets/server/blizzard/l3.py $PORT &
 SERVER_PID=$!
 
-THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 python play/models/blizzard/deep_l0.py $PORT 2> ../results/blizzard/$PORT/err.txt 1> ../results/blizzard/$PORT/out.txt &
+THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 python play/models/blizzard/deep_l3.py $PORT 2> ../results/blizzard/$PORT/err.txt 1> ../results/blizzard/$PORT/out.txt &
 TRAINER_PID=$!
 
 wait $TRAINER_PID

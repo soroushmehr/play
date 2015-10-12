@@ -1,27 +1,33 @@
 #!/bin/bash
+#PBS -N 10
 #PBS -A jvb-000-ag
 #PBS -l walltime=23:30:00
 #PBS -l nodes=1:gpus=1
 #PBS -M rdz.sotelo@gmail.com
 #PBS -m bea
 #PBS -l feature=k80
+#PBS -t [1-4]%2
+#PBS -o $SCRATCH/results/blizzard/job-%J_%I.out
+#PBS -e $HOME/results/blizzard/job-%J_%I.err
+#PBS -E 
 
 cd $SCRATCH/code
 
-PORT=$MOAB_JOBID
-FILE=$SCRATCH/data/blizzard/tbptt_blizzard.hdf5
+PORT=$MOAB_JOBNAME$MOAB_JOBID
+FILE=$LSCRATCH/data/blizzard/tbptt_blizzard.hdf5
 mkdir $SCRATCH/results/blizzard/$PORT
 
 if [ -f $FILE ];
 then
    echo "File $FILE exists."
 else
-   mkdir $LSCRATCH/
    mkdir $LSCRATCH/data
    mkdir $LSCRATCH/data/blizzard
    cp $SCRATCH/data/blizzard/* $LSCRATCH/data/blizzard
 fi
 
+export RESULTS_DIR=$SCRATCH/results
+export THEANO_FLAGS=floatX=float32
 export FUEL_DATA_PATH=$LSCRATCH/data
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/scratch/jvb-000-aa/sotelo/local/cbin/lib
 

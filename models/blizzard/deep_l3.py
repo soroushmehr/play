@@ -63,14 +63,14 @@ context_size = 32*20*3
 
 lr = 10 ** (2*numpy.random.rand() - 5)
 
-config.recursion_limit = 100000
+print config.recursion_limit
 floatX = theano.config.floatX
 
 #job_id = 5557
 job_id = int(sys.argv[1])
 
-save_dir = os.environ['FUEL_DATA_PATH']
-save_dir = os.path.join(save_dir, '..','results/','blizzard/', str(job_id) + "/")
+save_dir = os.environ['RESULTS_DIR']
+save_dir = os.path.join(save_dir,'blizzard/', str(job_id) + "/")
 
 experiment_name = 'deep_l3_{}_{}'.format(job_id, lr)
 
@@ -199,7 +199,6 @@ valid_monitor = DataStreamMonitoring(
      valid_stream,
      after_epoch = True,
      every_n_batches = 4*n_batches,
-     #before_first_epoch = False,
      prefix="valid")
 
 extensions = extensions=[

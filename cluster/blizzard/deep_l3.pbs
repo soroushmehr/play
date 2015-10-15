@@ -1,19 +1,20 @@
 #!/bin/bash
 #PBS -N 10
 #PBS -A jvb-000-ag
-#PBS -l walltime=23:30:00
+#PBS -l walltime=23:00:00
 #PBS -l nodes=1:gpus=1
 #PBS -M rdz.sotelo@gmail.com
 #PBS -m bea
 #PBS -l feature=k80
-#PBS -t [1-4]%2
-#PBS -o $SCRATCH/results/blizzard/job-%J_%I.out
-#PBS -e $HOME/results/blizzard/job-%J_%I.err
+#PBS -t [1-10]%5
 #PBS -E 
+#PBS -e /scratch/jvb-000-aa/sotelo/results/blizzard/%J%I.err
+#PBS -o /scratch/jvb-000-aa/sotelo/results/blizzard/%J%I.out
 
 cd $SCRATCH/code
 
-PORT=$MOAB_JOBNAME$MOAB_JOBID
+PORT=${MOAB_JOBID//[^[:alnum:]]/} #Remove [] brackets
+
 FILE=$LSCRATCH/data/blizzard/tbptt_blizzard.hdf5
 mkdir $SCRATCH/results/blizzard/$PORT
 

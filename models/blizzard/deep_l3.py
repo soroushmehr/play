@@ -43,27 +43,30 @@ from play.utils import GMM
 # Define parameters of the model
 ###################
 
+lr = 10 ** (2*numpy.random.rand() - 5)
+depth = numpy.random.randint(2,5)
+size = numpy.random.randint(10,20)
+
 batch_size = 64
 frame_size = 128
 k = 32
 target_size = frame_size * k
 
-depth_x = 4
-hidden_size_mlp_x = 32*20
+depth_x = depth
+hidden_size_mlp_x = 32*size
 
-depth_lstm = 4
+depth_lstm = depth-1
 
-depth_theta = 4
-hidden_size_mlp_theta = 32*20
-hidden_size_recurrent = 32*20*3
+depth_theta = depth
+hidden_size_mlp_theta = 32*size
+hidden_size_recurrent = 32*size*3
 
-depth_context = 4
-hidden_size_mlp_context = 32*20
-context_size = 32*20*3
+depth_context = depth
+hidden_size_mlp_context = 32*size
+context_size = 32*size
 
-lr = 10 ** (2*numpy.random.rand() - 5)
 
-print config.recursion_limit
+#print config.recursion_limit
 floatX = theano.config.floatX
 
 #job_id = 5557
@@ -72,7 +75,7 @@ job_id = int(sys.argv[1])
 save_dir = os.environ['RESULTS_DIR']
 save_dir = os.path.join(save_dir,'blizzard/', str(job_id) + "/")
 
-experiment_name = 'deep_l3_{}_{}'.format(job_id, lr)
+experiment_name = 'deep_l3_{}_{}_{}_{}'.format(job_id, lr, depth, size)
 
 train_stream = ServerDataStream(('upsampled', 'residual',), 
                   produces_examples = False,
@@ -183,7 +186,7 @@ model = Model(cost)
 # Algorithm
 #################
 
-n_batches = 16#139*16
+n_batches = 139#139*16
 
 algorithm = GradientDescent(
     cost=cost, parameters=cg.parameters,
@@ -198,7 +201,7 @@ valid_monitor = DataStreamMonitoring(
      [cost],
      valid_stream,
      after_epoch = True,
-     every_n_batches = 4*n_batches,
+     every_n_batches = n_batches,
      prefix="valid")
 
 extensions = extensions=[

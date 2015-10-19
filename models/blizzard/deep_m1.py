@@ -16,7 +16,7 @@ from blocks.bricks import (Tanh, MLP,
 
 from blocks.bricks.sequence_generators import ( 
                         Readout, SequenceGenerator)
-from blocks.bricks.recurrent import LSTM, SimpleRecurrent
+from blocks.bricks.recurrent import LSTM, RecurrentStack
 from blocks.extensions import FinishAfter, Printing
 from blocks.extensions.monitoring import (TrainingDataMonitoring, DataStreamMonitoring)
 from blocks.extensions.predicates import OnLogRecord
@@ -41,6 +41,7 @@ from play.bricks.custom import (DeepTransitionFeedback, GMMEmitter,
                      GMMMLP)
 
 from play.datasets.blizzard import Blizzard
+from play.extensions.sample import Speak
 from play.extensions.plot import Plot
 from scikits.samplerate import resample
 
@@ -58,7 +59,7 @@ hidden_size_mlp_x = 2000
 
 depth_theta = 4
 hidden_size_mlp_theta = 2000
-hidden_size_recurrent = 3000
+hidden_size_recurrent = 2000
 
 lr = 3e-4
 
@@ -67,7 +68,7 @@ floatX = theano.config.floatX
 save_dir = os.environ['RESULTS_DIR']
 save_dir = os.path.join(save_dir,'blizzard/')
 
-experiment_name = "deep_m1"
+experiment_name = "deep_m1_2"
 
 #################
 # Prepare dataset
@@ -79,7 +80,6 @@ def _transpose(data):
 def _segment_axis(data):
     x = numpy.array([segment_axis(x, frame_size, 0) for x in data[0]])
     return (x,)
-
 
 data_dir = os.environ['FUEL_DATA_PATH']
 data_dir = os.path.join(data_dir, 'blizzard/', 'blizzard_standardize.npz')
@@ -132,8 +132,11 @@ mlp_x = MLP(activations = activations_x,
 
 feedback = DeepTransitionFeedback(mlp = mlp_x)
 
-transition = LSTM(
-            dim=hidden_size_recurrent)
+transition = [LSTM(dim=hidden_size_recurrent, 
+                   name = "lstm_{}".format(i) ) for i in range(3)]
+
+transition = RecurrentStack( transition,
+            name="transition", skip_connections = True)
 
 mlp_theta = MLP( activations = activations_theta,
              dims = dims_theta)
@@ -148,7 +151,7 @@ emitter = GMMEmitter(gmmmlp = mlp_gmm,
                      k = k,
                      name = "emitter")
 
-source_names=['states']
+source_names = [name for name in transition.apply.states if 'states' in name]
 readout = Readout(
     readout_dim = hidden_size_recurrent,
     source_names =source_names,
@@ -162,6 +165,11 @@ generator = SequenceGenerator(readout=readout,
 
 generator.weights_init = IsotropicGaussian(0.01)
 generator.biases_init = Constant(0.)
+generator.push_initialization_config()
+
+generator.transition.biases_init = IsotropicGaussian(0.01,1)
+generator.transition.push_initialization_config()
+
 generator.initialize()
 
 cost_matrix = generator.cost_matrix(x)
@@ -191,7 +199,7 @@ valid_monitor = DataStreamMonitoring(
      [cost],
      valid_stream,
      after_epoch = True,
-     after_n_batches = n_batches,
+     every_n_batches = n_batches,
      #before_first_epoch = False,
      prefix="valid")
 
@@ -211,7 +219,14 @@ extensions=[
                every_n_batches = n_batches
                ).add_condition(['after_epoch'],
                     predicate=OnLogRecord('train_sequence_log_likelihood_best_so_far')),
-    Printing(after_epoch = True, every_n_batches = n_batches,)
+    Printing(after_epoch = True, every_n_batches = n_batches,),
+    Speak(generator,
+           steps=320,
+           n_samples = 5,
+           mean_data = data_mean,
+           std_data = data_std,
+           sample_rate = 16000,
+           save_name = save_dir + "samples/" + experiment_name)
     ]
 
 main_loop = MainLoop(

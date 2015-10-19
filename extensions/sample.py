@@ -14,7 +14,8 @@ class Speak(SimpleExtension):
     num_frames : int Number of frames to generate
     """
     def __init__(self, generator, steps=320, n_samples = 10, 
-            mean_data = 0, std_data = 1, **kwargs):
+            mean_data = 0, std_data = 1, sample_rate = 8000,
+            save_name = "sample_", **kwargs):
         super(Speak, self).__init__(**kwargs)
         steps = 300
         sample = ComputationGraph(generator.generate(n_steps=steps, 
@@ -23,6 +24,8 @@ class Speak(SimpleExtension):
 
         self.mean_data = mean_data
         self.std_data = std_data
+        self.sample_rate = sample_rate
+        self.save_name = save_name
 
     def do(self, callback_name, *args):
 
@@ -34,8 +37,9 @@ class Speak(SimpleExtension):
         for i, sample in enumerate(sampled_values):
             #Plot example
             pyplot.plot(sample)
-            pyplot.savefig("sample_%i.png" % i)
+            pyplot.savefig(self.save_name +"_%i.png" % i)
             pyplot.close()
 
             #Wav file
-            wavfile.write("sample_%i.wav" % i, 8000, sample.astype('int16'))
+            wavfile.write(self.save_name + "_%i.wav" % i, 
+                self.sample_rate, sample.astype('int16'))

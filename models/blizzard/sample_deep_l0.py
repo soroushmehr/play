@@ -114,7 +114,7 @@ for i, sample in enumerate(upsampled_audio_std[:n_samples]):
 upsampled = _segment_axis((upsampled_audio,))[0]
 upsampled = _transpose((upsampled,))[0]
 
-l0_loop = load('/data/lisatmp3/sotelo/results/blizzard/deep_l0_5557_0.000251530497588.pkl')
+l0_loop = load('/data/lisatmp3/sotelo/results/blizzard/pkl/deep_l0_5557_0.000251530497588.pkl')
 predict = l0_loop.extensions[-1].theano_function
 
 residuals = predict(upsampled)[0]

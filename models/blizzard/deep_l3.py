@@ -75,7 +75,7 @@ job_id = int(sys.argv[1])
 save_dir = os.environ['RESULTS_DIR']
 save_dir = os.path.join(save_dir,'blizzard/', str(job_id) + "/")
 
-experiment_name = 'deep_l3_{}_{}_{}_{}'.format(job_id, lr, depth, size)
+experiment_name = 'deep_l32_{}_{}_{}_{}'.format(job_id, lr, depth, size)
 
 train_stream = ServerDataStream(('upsampled', 'residual',), 
                   produces_examples = False,

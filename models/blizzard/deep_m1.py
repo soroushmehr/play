@@ -68,7 +68,7 @@ floatX = theano.config.floatX
 save_dir = os.environ['RESULTS_DIR']
 save_dir = os.path.join(save_dir,'blizzard/')
 
-experiment_name = "deep_m1_2"
+experiment_name = "deep_m1_3"
 
 #################
 # Prepare dataset

@@ -1,26 +1,25 @@
+import theano
+from theano import tensor
 
 from blocks.bricks.base import application
 from blocks.bricks.attention import AbstractAttention
 
-import theano
-from theano import tensor
 
 class SimpleSequenceAttention(AbstractAttention):
     """Combines a conditioning sequence and a recurrent transition via
-    attention.
+    attention. The conditioning sequence should have the same number of steps
+    as the sequence. See :class:`AbstractAttention` for an explanation of use.
 
+    Notes
+    -----
     The conditioning sequence should have the shape:
     (seq_length, batch_size, features)
 
-    Parameters
-    ----------
-    transition : :class:`.BaseRecurrent`
-        The recurrent transition.
     """
 
     @application(outputs=['glimpses', 'step'])
     def take_glimpses(self, attended, preprocessed_attended=None,
-                attended_mask=None, step = None, **states):
+                      attended_mask=None, step=None, **states):
         return attended[step, tensor.arange(attended.shape[1]), :], step + 1
 
     @take_glimpses.property('inputs')
@@ -30,9 +29,9 @@ class SimpleSequenceAttention(AbstractAttention):
                 self.state_names)
 
     @application(outputs=['glimpses', 'step'])
-    def initial_glimpses(self, batch_size, attended = None):
-        return ([tensor.zeros((batch_size, self.attended_dim))]
-            + [tensor.zeros((batch_size,), dtype='int64')])
+    def initial_glimpses(self, batch_size, attended=None):
+        return ([tensor.zeros((batch_size, self.attended_dim))] +
+                [tensor.zeros((batch_size,), dtype='int64')])
 
     def get_dim(self, name):
         if name == 'step':

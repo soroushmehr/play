@@ -35,7 +35,7 @@ from theano import tensor, config, function
 from play.bricks.custom import GMMMLP, GMMEmitter, DeepTransitionFeedback
 from play.bricks.recurrent import SimpleSequenceAttention
 from play.datasets.blizzard import Blizzard
-from play.extensions import SaveComputationGraph
+from play.extensions import SaveComputationGraph, Flush
 from play.extensions.plot import Plot
 from play.utils import GMM
 
@@ -113,6 +113,7 @@ mlp_x = MLP(activations = activations_x,
 feedback = DeepTransitionFeedback(mlp = mlp_x)
 
 transition = [LSTM(dim=hidden_size_recurrent, 
+                   use_bias = True,
                    name = "lstm_{}".format(i) ) for i in range(depth_lstm)]
 
 transition = RecurrentStack( transition,
@@ -156,12 +157,21 @@ generator = SequenceGenerator(readout=readout,
 mlp_context = MLP(activations = activations_context,
                   dims = dims_context)
 
-bricks = [generator, mlp_context]
+bricks = [mlp_context]
 
 for brick in bricks:
     brick.weights_init = IsotropicGaussian(0.01)
     brick.biases_init = Constant(0.)
     brick.initialize()
+
+generator.weights_init = IsotropicGaussian(0.01)
+generator.biases_init = Constant(0.)
+generator.push_initialization_config()
+
+generator.transition.biases_init = IsotropicGaussian(0.01,1)
+generator.transition.push_initialization_config()
+
+generator.initialize()
 
 ##############
 # Test model
@@ -225,7 +235,8 @@ extensions = extensions=[
           predicate=OnLogRecord('valid_nll_best_so_far')),
     Printing(every_n_batches = n_batches, after_epoch = True),
     FinishAfter(after_n_epochs=2),
-    SaveComputationGraph(emit)
+    SaveComputationGraph(emit),
+    Flush(every_n_batches = n_batches, after_epoch = True)
     ]
 
 main_loop = MainLoop(

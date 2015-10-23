@@ -1,0 +1,56 @@
+#!/bin/bash
+#PBS -l walltime=47:00:00
+#PBS -l nodes=1:ppn=1
+#PBS -m abe
+#PBS -M rdz.sotelo@gmail.com
+#PBS -t 1-5	
+#PBS -q @hades
+#PBS -e /RQexec/sotelo/results/blizzard/cluster_files/$PBS_JOBID.err
+#PBS -o /RQexec/sotelo/results/blizzard/cluster_files/$PBS_JOBID.out
+
+echo "New job started."
+# Get the port out of the job id.
+JOB_ID=$(cut -f1 -d"[" <<< $PBS_JOBID)
+JOB_ID=$(cut -f1 -d"." <<< $JOB_ID)
+PORT=$JOB_ID$PBS_ARRAYID
+
+cd $HOME/code
+
+echo "The job is:"
+echo $PORT
+
+echo "Data path is:"
+export FUEL_DATA_PATH=/lscratch/data/
+echo $FUEL_DATA_PATH
+
+FILE=$FUEL_DATA_PATH/blizzard/tbptt_blizzard.hdf5
+mkdir $SCRATCH/results/blizzard/$PORT
+
+if [ -f $FILE ];
+then
+   echo "File $FILE exists."
+else
+   echo "Copying file"
+   mkdir $FUEL_DATA_PATH
+   mkdir $FUEL_DATA_PATH/blizzard
+   cp $SCRATCH/data/blizzard/* $FUEL_DATA_PATH/blizzard/
+fi
+
+echo "Finished copying file in:"
+echo $FILE
+
+export RESULTS_DIR=$SCRATCH/results
+export THEANO_FLAGS=floatX=float32
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/local/clib/lib
+
+cp play/models/blizzard/deep_l3.py $RESULTS_DIR/blizzard/$PORT/model.py
+cp play/datasets/server/blizzard/l3.py $RESULTS_DIR/blizzard/$PORT/dataset.py
+
+python play/datasets/server/blizzard/l3.py $PORT 2> $RESULTS_DIR/blizzard/$PORT/server_err.txt 1> $RESULTS_DIR/blizzard/$PORT/server_out.txt &
+SERVER_PID=$!
+
+THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 python play/models/blizzard/deep_l3.py $PORT 2> $RESULTS_DIR/blizzard/$PORT/err.txt 1> $RESULTS_DIR/blizzard/$PORT/out.txt &
+TRAINER_PID=$!
+
+wait $TRAINER_PID
+kill -9 $SERVER_PID

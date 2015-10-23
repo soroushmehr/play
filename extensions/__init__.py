@@ -1,3 +1,4 @@
+import sys
 import numpy
 import matplotlib
 matplotlib.use('Agg')
@@ -14,3 +15,7 @@ class SaveComputationGraph(SimpleExtension):
 
     def do(self, which_callback, *args):
         print "empty"
+
+class Flush(SimpleExtension):
+    def do(self, which_callback, *args):
+        sys.stdout.flush()

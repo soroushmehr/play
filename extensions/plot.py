@@ -10,6 +10,7 @@ from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 
 import smtplib
+import ipdb
 
 class Plot(SimpleExtension):
     """ Alternative plot extension for blocks.
@@ -47,6 +48,7 @@ class Plot(SimpleExtension):
     def do(self, which_callback, *args):
         log = self.main_loop.log
         df = DataFrame.from_dict(log, orient='index')
+        df=df.interpolate('index')
 
         fig, axarr = pyplot.subplots(self.num_plots, sharex=True)
 

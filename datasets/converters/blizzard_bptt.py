@@ -40,7 +40,7 @@ hdf5_path = os.path.join(data_path, file_name)
 intermediateh5file = h5py.File(hdf5_path, mode='w')
 
 batch_size = 64
-row_size = sum(len_files)/64
+row_size = sum(len_files)/batch_size
 reiterations = 4
 seq_size = 8192 # 2**13
 frame_size = 128
